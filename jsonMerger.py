@@ -48,7 +48,8 @@ def main(nameFile1="message1.json", nameFile2="message2.json"):
   
   print("Length File 1 = "+str(len(j1['messages'])))
   print("Length File 2 = "+str(len(j2['messages'])))
-  
+  if(j1['title'] != j2['title']):
+    print("WARN: not the same conversations. Your file may be incoherent...")
   if lastDate1 > lastDate2:
     print("WARN: f1 is more recent than f2. Swapping...")
     j0 = j1 # TEMP

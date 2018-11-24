@@ -5,71 +5,83 @@
 import json
 import sys
 
-try:
-  nameFile1 = sys.argv[1]
-  nameFile2 = sys.argv[2]
-except IndexError:
-  print("No arguments provided. I take the defaults (message1.json and message2.json)")
-  nameFile1="message1.json"
-  nameFile2="message2.json"
+def loadFile(nameFile):
+  # From a name of file, this function returns a JSON, ready to be merged!
+  f_temp = open(nameFile,'r')
+  content_temp = f_temp.readlines() # Content of the whole file (but w/ newlines)
+  line_temp = ""
+  f_temp.close()
+  for i in range(len(content_temp)):
+    line_temp += content_temp[i]
+  res = json.loads(line_temp)  # Now, we have a great thing that can be used :)
+  print("[*] The file loaded has "+str(len(res['messages']))+" messages.")
+  del content_temp
+  del line_temp
+  return res
 
-def main(nameFile1="message1.json", nameFile2="message2.json"):
-  f1 = open(nameFile1,'r')
-  print("Opening the message1.json file")
-  content = f1.readlines() # Content of the whole file (but w/ newlines)
-  line = ""
-  f1.close()
-  for i in range(len(content)):
-    line += content[i]
-  j1 = json.loads(line)  # Now, we have a great thing that can be used :)
-  del content
-  del line
-  # Another file?
-  # EDIT: painfully slow. Should not be used.
-  try:
-    f2 = open(nameFile2,'r') # The most recent
-    print("Opening the message2.json file")
-    content2 = f2.readlines()
-    line2 = ""
-    f2.close()
-    for i in range(len(content2)):
-      line2 += content2[i]
-    j2 = json.loads(line2)
-    del line2
-    del content2
-      #j['messages'] = mergeDicts(j2['messages'],j['messages']) #Remember: the 1st element is the most recent
-  except IOError:
-      # Ok, no other message file to merge!
-      print("No other files to open!")
-      
-  # Get the most recent file
-  lastDate1 = j1['messages'][0]['timestamp_ms'] # 2018-1-1 .. 2018-8-31
-  lastDate2 = j2['messages'][0]['timestamp_ms'] # 2018-8-1 .. 2019-1-1
-  
-  print("Length File 1 = "+str(len(j1['messages'])))
-  print("Length File 2 = "+str(len(j2['messages'])))
-  if(j1['title'] != j2['title']):
-    print("WARN: not the same conversations. Your file may be incoherent...")
-  if lastDate1 > lastDate2:
-    print("WARN: f1 is more recent than f2. Swapping...")
-    j0 = j1 # TEMP
-    j1 = j2
-    j2 = j0
-    del j0
-
+def merge(j1, j2):
+  # From two JSON variables, create a variable, merging both arguments  
+  # j2 is considered the base, j1 the content to add
+  j = j2
   firstDate2 = j2['messages'][-1]['timestamp_ms']
-
-  j = j2 # The result will be the most recent conversation.
-  
   for m in j1['messages']:
     if(m['timestamp_ms'] < firstDate2):
       j['messages'].append(m)
-
   return j
 
+def main(arg):
+  # First, we check the range of each file
+  startDate = []
+  endDate = []
+  pathFile = []
+  print("[INFO] Starting the loop - "+str(len(arg))+ " files to process")
+  for nameFile in arg:
+    # Do this for each file
+    j_temp = loadFile(nameFile)  # Now, we have a great thing that can be used :)
+    startDate.append(j_temp['messages'][-1]['timestamp_ms'])
+    endDate.append(j_temp['messages'][0]['timestamp_ms'])
+    pathFile.append(nameFile)
+    del j_temp
+  # When everything is collected
+  endDate, startDate, pathFile =zip(*sorted(zip(endDate, startDate, pathFile), reverse=True))
+  print("============ Data gathered. Starting the merging. ============")
+  # Initiation: We load into memory the 1st file (the most recent)
+  start = startDate[0] 
+  end = endDate[0] # It won't change a lot, normally...
+  
+  finalJson = loadFile(pathFile[0]) # The most recent one. We will add other files later.
+  for i in range(1, len(startDate)):
+    # We start again, with the dates known.
+    if (startDate[i] >= start and endDate[i] <= end):
+      # The file is already contained in the merged entity. Skipping
+      print("INFO: The file '"+str(pathFile[i])+"' is already contained in previous backups. Ignoring.")
+    elif (endDate[i] > end):
+      # Should never happen
+      print("ERROR: Time problem: this conversation should be more recent than the previous one. Check the sorting algo...")
+    elif (startDate[i] < start):
+      if(endDate[i] < start):
+        print("WARN: there is a gap of "+ str((start-endDate[i])//86400000) +" days... I merge anyway...")  
+      else:
+        print("INFO: There is a little overlapping: I will remove the duplicates, don't worry :)")
+      # Merging
+      j = loadFile(pathFile[i])
+      if(j['title'] != finalJson['title']):
+        print("WARN: not the same conversations. Your file may be incoherent...")
+      finalJson = merge(j, finalJson)
+      start = startDate[i]
+      del j
+    else:
+      print("ERROR: This case is unknown and you should not read this...")
+  return finalJson
+
 if __name__ == "__main__":
-  data = main(nameFile1, nameFile2)
-  print("Total Length = "+str(len(data['messages'])))
+  if (len(sys.argv) < 2):
+    arg = ["message1.json", "message2.json"] # If the user did not enter arguments, I take the defaults
+    print("WARN: No arguments provided. I take the defaults (message1.json and message2.json)")
+  else:
+    arg = sys.argv[1:] # Else, I take the arguments provided by the command-line
+  data = main(arg)
+  print("[DONE] Total Length = "+str(len(data['messages']))+", in the file 'message.json'")
   with open('message.json', 'w') as f:
     json.dump(data, f, indent=2)
-    
+  
